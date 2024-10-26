@@ -88,7 +88,7 @@ portfolio_vars = [VaR_A, VaR_B, VaR_C]
 portfolio_ess = [ES_A, ES_B, ES_C]
 combined_VaR, combined_ES = copula_based_var_es(portfolio_vars, portfolio_ess, correlation_matrix)
 
-# Step 4: Comparison with EWMA VaR from Week 4
+# Comparison with EWMA VaR from Week 4
 def calculate_portfolio_ewma_var(portfolio, returns_df, prices_df, lambda_value, confidence_level):
     """
     Calculate EWMA-based VaR and ES for a given portfolio.
