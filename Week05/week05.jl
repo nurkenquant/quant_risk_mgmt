@@ -50,7 +50,7 @@ println("ES ($normES) vs Expected ES ($eNormES) vs Expected ES2 ($eNormES2)")
 
 #Model Simulation
 include("../Week04/return_calculate.jl")
-prices = CSV.read("DailyPrices.csv",DataFrame)
+prices = CSV.read("Week05/DailyPrices.csv", DataFrame)
 current_prices = prices[size(prices,1),:]
 returns = return_calculate(prices,dateColumn="Date")
 
@@ -113,7 +113,7 @@ covar = cov(hcat(spy,e_tsla,e_aapl))
 means = vec(hcat(mean(spy),0,0))
 
 #same simulation as before
-nsim = 10000
+nsim = 1000000
 sim = rand(MvNormal(means,covar),nsim)'
 
 x_sim = hcat(fill(1.0,nsim),sim[:,1])
