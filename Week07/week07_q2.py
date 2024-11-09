@@ -33,7 +33,7 @@ np.random.seed(0)
 simulated_returns = np.random.normal(0, std_dev, (num_simulations, days_ahead))
 simulated_prices = current_price * np.exp(simulated_returns.cumsum(axis=1))
 
-# Adjust for dividend payment on March 15, 2023
+# Adjust for dividend payment
 dividend_adjustment_day = (dividend_date - pd.to_datetime("2023-03-03")).days
 simulated_prices[:, dividend_adjustment_day:] -= dividend
 
