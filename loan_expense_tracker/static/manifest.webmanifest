@@ -1,0 +1,9 @@
+{
+  "name": "Loan & Expense Tracker",
+  "short_name": "Ledger",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f4f1",
+  "theme_color": "#1f6fd1",
+  "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

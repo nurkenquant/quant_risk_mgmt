@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit loan' if mode == 'edit' else 'New loan' }}{% endblock %}
+{% block heading %}{{ 'Edit loan' if mode == 'edit' else 'New loan' }}{% endblock %}
+{% block content %}
+<form method="post" class="card form" id="loan-form">
+  <div class="row2">
+    <label>Name<input name="name" value="{{ loan.name or '' }}" placeholder="Car loan" required></label>
+    <label>Lender<input name="lender" value="{{ loan.lender or '' }}" placeholder="Bank name"></label>
+  </div>
+  <div class="row2">
+    <label>Amount borrowed<span class="with-prefix"><i>{{ currency }}</i>
+      <input name="principal" inputmode="decimal" value="{{ loan.principal or '' }}" required></span></label>
+    <label>Interest rate (% / year)<input name="rate" inputmode="decimal" value="{{ loan.rate if loan.rate is not none else '' }}" required></label>
+  </div>
+  <div class="row2">
+    <label>Term (months)<input name="term_months" inputmode="numeric" value="{{ loan.term_months or '' }}" required></label>
+    <label>First payment date<input type="date" name="first_due" value="{{ loan.first_due }}" required></label>
+  </div>
+  <div class="row2">
+    <label>Monthly payment <small>(optional)</small><span class="with-prefix"><i>{{ currency }}</i>
+      <input name="payment" inputmode="decimal" value="{{ loan.payment or '' }}" placeholder="auto"></span></label>
+    <label>Extra per month <small>(optional)</small><span class="with-prefix"><i>{{ currency }}</i>
+      <input name="extra" inputmode="decimal" value="{{ loan.extra or '' }}" placeholder="0"></span></label>
+  </div>
+  <p class="hint" id="loan-preview">Leave the monthly payment blank to calculate it, or type the exact figure from your bank.</p>
+  {% if mode == 'add' %}
+  <label class="check"><input type="checkbox" name="mark_past" checked> Mark payments dated before today as already paid</label>
+  {% endif %}
+  <button class="btn primary block">{{ 'Save changes' if mode == 'edit' else 'Add loan' }}</button>
+</form>
+{% if mode == 'edit' %}
+<form method="post" action="{{ url_for('delete_loan', loan_id=loan_id) }}" class="danger-zone" data-confirm="Delete this loan? Recorded payments stay as expenses.">
+  <button class="btn danger block">Delete loan</button>
+</form>
+{% endif %}
+{% endblock %}

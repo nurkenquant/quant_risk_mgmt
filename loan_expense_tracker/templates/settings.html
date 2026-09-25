@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}More{% endblock %}
+{% block heading %}More{% endblock %}
+{% block content %}
+<form method="post" class="card form">
+  <label>Currency symbol<input name="currency" value="{{ currency }}" maxlength="4" placeholder="$, €, ₸, ₽…"></label>
+  <button class="btn primary block">Save</button>
+</form>
+<section class="card">
+  <h2>Receipt reading</h2>
+  {% if ai_enabled %}
+  <p>✅ Receipts are read with Claude — photos and PDFs in any language. The amount, date, merchant and category
+     are filled in, and loan payments are matched to the right installment.</p>
+  {% else %}
+  <p>Basic mode: text-based PDFs (and photos, if Tesseract OCR is installed) are parsed for the total and date.
+     Set <code>ANTHROPIC_API_KEY</code> on the server to read any photo accurately.</p>
+  {% endif %}
+</section>
+<section class="card">
+  <h2>Data</h2>
+  <p><a class="btn" href="{{ url_for('export_csv') }}">Download all transactions (CSV)</a></p>
+  <p class="hint">Tip: in your phone's browser choose <b>Add to Home Screen</b> to use this like an app.</p>
+  {% if config.APP_PASSWORD %}<p><a class="btn" href="{{ url_for('logout') }}">Sign out</a></p>{% endif %}
+</section>
+{% endblock %}
