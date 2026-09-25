@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Money{% endblock %}
+{% block heading %}Money{% endblock %}
+{% block header_action %}<a class="icon-btn" href="{{ url_for('export_csv') }}" title="Export CSV" aria-label="Export CSV">
+  <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></a>{% endblock %}
+{% block content %}
+<div class="month-nav">
+  <a href="{{ url_for('transactions', month=prev, kind=kind) }}" aria-label="Previous month">‹</a>
+  <b>{{ month_label }}</b>
+  <a href="{{ url_for('transactions', month=next, kind=kind) }}" aria-label="Next month">›</a>
+</div>
+<div class="seg">
+  <a href="{{ url_for('transactions', month=month) }}" class="{{ 'on' if not kind }}">All</a>
+  <a href="{{ url_for('transactions', month=month, kind='income') }}" class="{{ 'on' if kind == 'income' }}">Revenue</a>
+  <a href="{{ url_for('transactions', month=month, kind='expense') }}" class="{{ 'on' if kind == 'expense' }}">Expenses</a>
+</div>
+<section class="tiles three">
+  <div class="tile"><small>Revenue</small><b>{{ money(tot.income) }}</b></div>
+  <div class="tile"><small>Spent</small><b>{{ money(tot.expense + tot.loan) }}</b></div>
+  <div class="tile"><small>Net</small><b class="{{ 'pos' if tot.net >= 0 else 'neg' }}">{{ money(tot.net, True) }}</b></div>
+</section>
+{% for d in days %}
+<section class="day">
+  <h3><span>{{ d.day.strftime('%a, %d %b') }}</span><span class="{{ 'pos' if d.net >= 0 else 'neg' }}">{{ money(d.net, True) }}</span></h3>
+  <ul class="list card">{% for t in d.entries %}{% set show_day = false %}{% include '_tx_row.html' %}{% endfor %}</ul>
+</section>
+{% else %}
+<p class="empty card">No transactions in {{ month_label }}.</p>
+{% endfor %}
+{% endblock %}

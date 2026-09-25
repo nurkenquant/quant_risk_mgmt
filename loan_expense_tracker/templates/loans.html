@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Loans{% endblock %}
+{% block heading %}Loans{% endblock %}
+{% block header_action %}<a class="icon-btn" href="{{ url_for('new_loan') }}" aria-label="Add loan" title="Add loan">
+  <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></a>{% endblock %}
+{% block content %}
+{% for o in overview %}{% set l = o.loan %}{% set s = o.summary %}
+<a class="card loan-card" href="{{ url_for('loan_detail', loan_id=l.id) }}">
+  <div class="card-head"><h2>{{ l.name }}</h2><small>{{ l.lender }}</small></div>
+  <div class="split">
+    <div><small>Balance</small><b>{{ money(s.balance) }}</b></div>
+    <div><small>Next payment</small>
+      <b>{% if s.next %}{{ money(s.next.payment + s.next.extra) }}{% else %}Paid off 🎉{% endif %}</b>
+      {% if s.next %}<small>{{ s.next.due.strftime('%d %b %Y') }}</small>{% endif %}</div>
+  </div>
+  <div class="progress" role="progressbar" aria-valuenow="{{ s.progress }}" aria-valuemin="0" aria-valuemax="100">
+    <span style="width:{{ s.progress }}%"></span></div>
+  <small class="muted">{{ s.paid_count }} of {{ s.count }} payments · {{ l.rate }}% · payoff {{ s.payoff.strftime('%b %Y') if s.payoff }}</small>
+</a>
+{% else %}
+<div class="card empty">
+  <p>Add a loan to see every future payment, the interest you'll pay and your payoff date.</p>
+  <a class="btn primary" href="{{ url_for('new_loan') }}">Add loan</a>
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ loan.name }}{% endblock %}
+{% block heading %}{{ loan.name }}{% endblock %}
+{% block header_action %}<a class="icon-btn" href="{{ url_for('edit_loan', loan_id=loan.id) }}" aria-label="Edit loan" title="Edit loan">
+  <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4"/></svg></a>{% endblock %}
+{% block content %}
+<section class="tiles">
+  <div class="tile"><small>Balance</small><b>{{ money(s.balance) }}</b></div>
+  <div class="tile"><small>Still to pay</small><b>{{ money(s.remaining) }}</b></div>
+  <div class="tile"><small>Total interest</small><b>{{ money(s.total_interest) }}</b></div>
+  <div class="tile"><small>Payoff</small><b>{{ s.payoff.strftime('%b %Y') if s.payoff else '—' }}</b></div>
+</section>
+<div class="progress big"><span style="width:{{ s.progress }}%"></span></div>
+<p class="muted center">{{ s.paid_count }} of {{ s.count }} payments made · {{ loan.rate }}% a year{% if loan.lender %} · {{ loan.lender }}{% endif %}</p>
+
+<section class="card">
+  <div class="card-head"><h2>Payment schedule</h2>{% if s.next %}<a href="#p{{ s.next.period }}">Jump to next ↓</a>{% endif %}</div>
+  <ol class="schedule">
+    {% for r in rows %}
+    {% set is_paid = r.period in paid %}
+    {% set late = not is_paid and r.due < today %}
+    <li class="{{ 'paid' if is_paid }} {{ 'late' if late }} {{ 'next' if s.next and s.next.period == r.period }}" id="p{{ r.period }}">
+      <span class="n">#{{ r.period }}</span>
+      <b class="d">{{ r.due.strftime('%d %b %Y') }}</b>
+      <span class="amt">{{ money(r.payment + r.extra) }}</span>
+      <small class="brk">Principal {{ money(r.principal + r.extra) }} · Interest {{ money(r.interest) }} · Left {{ money(r.balance) }}</small>
+      <form method="post" action="{{ url_for('toggle_payment', loan_id=loan.id, period=r.period) }}">
+        <input type="hidden" name="next" value="{{ url_for('loan_detail', loan_id=loan.id) }}#p{{ r.period }}">
+        <button class="chk" aria-pressed="{{ 'true' if is_paid else 'false' }}" title="{{ 'Mark unpaid' if is_paid else 'Mark paid' }}"
+                aria-label="{{ 'Mark payment ' ~ r.period ~ ' unpaid' if is_paid else 'Mark payment ' ~ r.period ~ ' paid' }}">
+          <svg viewBox="0 0 24 24"><path d="M5 12l5 5 9-10"/></svg></button>
+      </form>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

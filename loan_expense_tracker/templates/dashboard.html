@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}Home{% endblock %}
+{% block heading %}{{ today.strftime('%A, %d %b') }}{% endblock %}
+{% block content %}
+
+<section class="card today">
+  <div class="today-net">
+    <small>Today</small>
+    <strong class="{{ 'pos' if day.net >= 0 else 'neg' }}">{{ money(day.net, True) }}</strong>
+  </div>
+  <div class="split">
+    <div><small>Revenue</small><b>{{ money(day.income) }}</b></div>
+    <div><small>Spent</small><b>{{ money(day.expense + day.loan) }}</b></div>
+  </div>
+  <div class="quick">
+    <form action="{{ url_for('scan') }}" method="post" enctype="multipart/form-data">
+      <label class="btn primary"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Scan receipt
+        <input type="file" name="receipt" accept="image/*,application/pdf" class="auto-submit" hidden></label>
+    </form>
+    <a class="btn" href="{{ url_for('add', kind='expense') }}">− Expense</a>
+    <a class="btn" href="{{ url_for('add', kind='income') }}">+ Revenue</a>
+  </div>
+</section>
+
+<section class="tiles">
+  <div class="tile"><small>{{ today.strftime('%B') }} revenue</small><b>{{ money(month.income) }}</b></div>
+  <div class="tile"><small>{{ today.strftime('%B') }} expenses</small><b>{{ money(month.expense) }}</b></div>
+  <div class="tile"><small>Loan payments</small><b>{{ money(month.loan) }}</b></div>
+  <div class="tile"><small>Month net</small><b class="{{ 'pos' if month.net >= 0 else 'neg' }}">{{ money(month.net, True) }}</b></div>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Upcoming loan payments</h2><a href="{{ url_for('loans') }}">All loans</a></div>
+  {% if upcoming %}
+  <ul class="list">
+    {% for loan, n in upcoming[:5] %}
+    {% set days = (n.due - today).days %}
+    <li class="due-row">
+      <a href="{{ url_for('loan_detail', loan_id=loan.id) }}" class="due-main">
+        <b>{{ loan.name }}</b>
+        <small class="{{ 'late' if days < 0 else 'soon' if days <= 7 }}">
+          #{{ n.period }} · {{ n.due.strftime('%d %b') }} ·
+          {% if days < 0 %}{{ -days }} days overdue{% elif days == 0 %}due today{% else %}in {{ days }} days{% endif %}
+        </small>
+      </a>
+      <span class="amt">{{ money(n.payment + n.extra) }}</span>
+      <form method="post" action="{{ url_for('toggle_payment', loan_id=loan.id, period=n.period) }}">
+        <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+        <button class="btn small" title="Record this payment as paid today">Paid</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty">No loans yet. <a href="{{ url_for('new_loan') }}">Add a loan</a> to project its payments.</p>
+  {% endif %}
+  {% if debt %}<p class="foot">Total debt remaining: <b>{{ money(debt) }}</b></p>{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Last 14 days</h2>
+    <span class="legend"><i class="sw in"></i>Revenue <i class="sw out"></i>Expenses</span></div>
+  <div class="bars daily" role="img" aria-label="Daily revenue and expenses for the last 14 days">
+    {% for p in daily %}
+    <div class="col" tabindex="0" data-tip="{{ p.day.strftime('%a %d %b') }} · Revenue {{ money(p.income) }} · Expenses {{ money(p.expense) }}">
+      <div class="pair">
+        {% if p.h_in > 0 %}<span class="bar in" style="height:{{ p.h_in }}%"></span>{% endif %}
+        {% if p.h_exp > 0 %}<span class="bar out" style="height:{{ p.h_exp }}%"></span>{% endif %}
+      </div>
+      <small class="{{ 'now' if p.day == today }}">{{ p.day.strftime('%d') if loop.index is odd or p.day == today else '' }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="tip" aria-live="polite">Tap a bar for details.</p>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>12-month cash flow</h2>
+    <span class="legend"><i class="sw in"></i>Revenue <i class="sw out"></i>Expenses <i class="sw loan"></i>Loans</span></div>
+  <p class="hint">Scheduled loan payments plus your average revenue and spending over the last 3 months.</p>
+  <div class="bars proj" role="img" aria-label="Projected monthly cash flow">
+    {% for p in proj %}
+    <div class="col" tabindex="0" data-tip="{{ p.label }} {{ p.year }} · Revenue {{ money(p.income) }} · Expenses {{ money(p.expense) }} · Loans {{ money(p.loan) }} · Net {{ money(p.net, True) }}">
+      <div class="pair">
+        {% if p.h_in > 0 %}<span class="bar in" style="height:{{ p.h_in }}%"></span>{% endif %}
+        <span class="stack">
+          {% if p.h_exp > 0 %}<span class="bar out" style="height:{{ p.h_exp }}%"></span>{% endif %}
+          {% if p.h_loan > 0 %}<span class="bar loan" style="height:{{ p.h_loan }}%"></span>{% endif %}
+        </span>
+      </div>
+      <small>{{ p.label[0] if not loop.first else p.label }}</small>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="tip" aria-live="polite">Tap a bar for details.</p>
+  <details class="table-view"><summary>Show as table</summary>
+    <table><thead><tr><th>Month</th><th>Revenue</th><th>Expenses</th><th>Loans</th><th>Net</th></tr></thead>
+    <tbody>{% for p in proj %}<tr><td>{{ p.label }} {{ p.year }}</td><td>{{ money(p.income) }}</td><td>{{ money(p.expense) }}</td><td>{{ money(p.loan) }}</td><td class="{{ 'pos' if p.net >= 0 else 'neg' }}">{{ money(p.net, True) }}</td></tr>{% endfor %}</tbody></table>
+  </details>
+</section>
+
+<section class="card">
+  <div class="card-head"><h2>Recent</h2><a href="{{ url_for('transactions') }}">See all</a></div>
+  {% if recent %}
+  <ul class="list">{% for t in recent %}{% set show_day = true %}{% include '_tx_row.html' %}{% endfor %}</ul>
+  {% else %}<p class="empty">Nothing yet — tap <b>+</b> to add your first expense or scan a receipt.</p>{% endif %}
+</section>
+{% endblock %}

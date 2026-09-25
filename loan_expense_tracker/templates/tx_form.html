@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Edit' if mode == 'edit' else 'Add' }}{% endblock %}
+{% block heading %}{{ 'Edit entry' if mode == 'edit' else ('Add revenue' if tx.kind == 'income' else 'Add expense') }}{% endblock %}
+{% block content %}
+<form method="post" enctype="multipart/form-data" class="card form" id="tx-form">
+  <div class="seg kind-toggle" role="radiogroup">
+    <label><input type="radio" name="kind" value="expense" {{ 'checked' if tx.kind != 'income' }}><span>Expense</span></label>
+    <label><input type="radio" name="kind" value="income" {{ 'checked' if tx.kind == 'income' }}><span>Revenue</span></label>
+  </div>
+
+  <label class="amount-field">Amount
+    <span class="with-prefix"><i>{{ currency }}</i>
+      <input name="amount" inputmode="decimal" autocomplete="off" placeholder="0.00"
+             value="{{ '%.2f' % tx.amount if tx.amount else '' }}" {{ 'autofocus' if mode == 'add' }}></span>
+  </label>
+
+  <label>Category
+    <select name="category" data-expense='{{ EXPENSE_CATEGORIES|tojson }}' data-income='{{ INCOME_CATEGORIES|tojson }}' data-current="{{ tx.category or '' }}">
+      {% for c in (INCOME_CATEGORIES if tx.kind == 'income' else EXPENSE_CATEGORIES) %}
+      <option {{ 'selected' if c == tx.category }}>{{ c }}</option>{% endfor %}
+    </select>
+  </label>
+
+  <div class="row2">
+    <label>Date<input type="date" name="day" value="{{ tx.day }}" required></label>
+    <label>Merchant / payer<input name="merchant" value="{{ tx.merchant or '' }}" placeholder="Optional"></label>
+  </div>
+  <label>Note<input name="note" value="{{ tx.note or '' }}" placeholder="Optional"></label>
+
+  <label class="drop">
+    <input type="file" name="receipt" accept="image/*,application/pdf">
+    <svg viewBox="0 0 24 24"><path d="M20 11l-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/></svg>
+    <span class="drop-text"><b>{{ 'Replace receipt' if tx.receipt else 'Attach receipt' }}</b>
+      <small>Blank fields are filled from the receipt{{ '' if ai_enabled else ' (text PDFs / OCR)' }}</small></span>
+  </label>
+
+  {% if tx.receipt %}
+  <a class="receipt-preview" href="{{ url_for('receipt_file', name=tx.receipt) }}" target="_blank" rel="noopener">
+    {% if tx.receipt.endswith('.pdf') %}<span class="pdf">PDF receipt — open</span>
+    {% else %}<img src="{{ url_for('receipt_file', name=tx.receipt) }}" alt="Attached receipt" loading="lazy">{% endif %}
+  </a>
+  {% endif %}
+  {% if tx.loan_name %}<p class="hint">Linked to loan <b>{{ tx.loan_name }}</b>, installment #{{ tx.loan_period }}.</p>{% endif %}
+
+  <button class="btn primary block">{{ 'Save changes' if mode == 'edit' else 'Save' }}</button>
+</form>
+{% if mode == 'edit' %}
+<form method="post" action="{{ url_for('delete_tx', tx_id=tx.id) }}" class="danger-zone" data-confirm="Delete this entry?">
+  <button class="btn danger block">Delete entry</button>
+</form>
+{% endif %}
+{% endblock %}

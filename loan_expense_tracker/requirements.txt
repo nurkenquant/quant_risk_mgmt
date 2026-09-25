@@ -1,0 +1,7 @@
+flask>=3.0
+anthropic>=1.0      # receipt reading with Claude (optional: needs ANTHROPIC_API_KEY)
+pypdf>=4.0          # text extraction from PDF receipts without an API key
+gunicorn>=22.0
+# Optional OCR for photos without an API key (also needs the `tesseract` binary):
+# pytesseract
+# pillow
