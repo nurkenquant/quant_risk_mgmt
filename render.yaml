@@ -1,26 +1,28 @@
 # Render Blueprint for the loan & expense tracker (loan_expense_tracker/).
+# Runs on Render's free plan; data lives in Supabase (free), not on Render.
 # Deploy: Render dashboard -> New -> Blueprint -> pick this repo.
 services:
   - type: web
     name: loan-expense-tracker
     runtime: python
-    plan: starter            # persistent disks need a paid instance
+    plan: free               # sleeps after ~15 min idle; first visit then takes ~1 min
     rootDir: loan_expense_tracker
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT --timeout 120 app:app
     healthCheckPath: /healthz
-    disk:
-      name: tracker-data     # SQLite database + receipt files
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.7
-      - key: DATA_DIR
-        value: /data
       - key: SECRET_KEY
         generateValue: true
-      - key: APP_PASSWORD      # asked for when you create the Blueprint
+      # The rest are asked for when you create the Blueprint.
+      - key: APP_PASSWORD          # your sign-in password
         sync: false
-      - key: ANTHROPIC_API_KEY # optional: reads photo receipts with Claude
+      - key: DATABASE_URL          # Supabase > Connect > Session pooler string
+        sync: false
+      - key: SUPABASE_URL          # https://<project>.supabase.co
+        sync: false
+      - key: SUPABASE_SERVICE_KEY  # Supabase secret / service_role key (never share it)
+        sync: false
+      - key: ANTHROPIC_API_KEY     # optional: reads photo receipts with Claude
         sync: false

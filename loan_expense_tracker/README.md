@@ -44,21 +44,44 @@ python app.py                         # http://localhost:8000
 
 Open it on your phone at `http://<your-computer-ip>:8000` (same Wi-Fi), or deploy it.
 
-### Deploy on Render
+### Deploy for free: Render + Supabase
 
-The repo root has a `render.yaml` Blueprint. It sets up a web service on the Starter
-plan with a 1 GB disk at `/data` for the database and receipts.
+Render runs the app on its free plan. Supabase (also free) keeps your data: the
+transactions and loans in its Postgres database and the receipt files in its Storage.
+Render's free plan has no disk, so nothing is kept on Render itself.
 
-1. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint**
-   and connect this GitHub repo. Render reads `render.yaml` from the branch you pick
-   (use `main` once this is merged).
-2. When asked, fill in `APP_PASSWORD` (required: anyone with the link could see your
-   data otherwise) and, optionally, `ANTHROPIC_API_KEY`.
-3. Click **Apply**. When the deploy finishes, open the `https://….onrender.com` URL on
-   your phone, sign in, and choose **Add to Home Screen**.
+**1. Create the Supabase project** at https://supabase.com (free plan). Pick a strong
+database password and save it.
 
-New pushes to the branch redeploy automatically. Your data is kept on the disk
-between deploys.
+**2. Copy three values from Supabase:**
+- `DATABASE_URL`: click **Connect** at the top of the project, then copy the
+  **Session pooler** connection string and put your database password in place of
+  `[YOUR-PASSWORD]`. Use the pooler, not the "Direct connection": Render can't reach
+  the direct address.
+- `SUPABASE_URL`: **Project Settings → Data API**, the project URL
+  (`https://<project>.supabase.co`).
+- `SUPABASE_SERVICE_KEY`: **Project Settings → API Keys**, a **secret** key (or the legacy
+  `service_role` key). It gives full access, so only paste it into Render.
+
+The app creates its tables and a private `receipts` storage bucket on first start.
+
+**3. Create the Render service:** in the [Render dashboard](https://dashboard.render.com),
+choose **New → Blueprint** and connect this repo on the `main` branch. Render reads
+`render.yaml` and asks for:
+- `APP_PASSWORD`: the password you'll use to sign in
+- the three Supabase values above
+- `ANTHROPIC_API_KEY` (optional): reads photo receipts
+
+Click **Apply**. When the deploy is done, open the `https://….onrender.com` URL on your
+phone, sign in, and choose **Add to Home Screen**. On Render the app refuses to start if
+the password or any Supabase setting is missing, so your data is never exposed or lost.
+
+**What "free" means:**
+- The Render service sleeps after about 15 minutes without visits; the next visit takes
+  up to a minute to load.
+- Supabase pauses a free project after a week with no activity. Using the app keeps it
+  awake; if it does pause, un-pause it from the Supabase dashboard (data is kept).
+- Free limits (500 MB database, 1 GB file storage) are far more than personal use needs.
 
 ### Deploy (Docker)
 
@@ -74,7 +97,10 @@ the receipt files. Put it behind HTTPS and set `APP_PASSWORD`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DATA_DIR` | `./data` | Where the database and receipts are stored |
+| `DATA_DIR` | `./data` | Where the database and receipts are stored when Supabase isn't set |
+| `DATABASE_URL` | *(none)* | Postgres connection string (Supabase); replaces the local SQLite file |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | *(none)* | Store receipts in a private Supabase Storage bucket |
+| `SUPABASE_BUCKET` | `receipts` | Name of that bucket |
 | `APP_PASSWORD` | *(none)* | Requires a password to sign in |
 | `ANTHROPIC_API_KEY` | *(none)* | Turns on reading receipts with Claude |
 | `RECEIPT_MODEL` | `claude-opus-5` | Claude model used to read receipts |
@@ -85,6 +111,8 @@ the receipt files. Put it behind HTTPS and set `APP_PASSWORD`.
 
 ```bash
 python -m pytest -q tests
+# also run the app tests against Postgres:
+TEST_DATABASE_URL=postgresql://user:pass@localhost/test_db python -m pytest -q tests
 ```
 
 ## Layout
@@ -93,7 +121,8 @@ python -m pytest -q tests
 app.py        routes, dashboard totals, cash-flow projection, receipt → transaction logic
 loans.py      amortization schedule and summaries
 receipts.py   receipt reading (Claude vision, or PDF text/OCR with heuristics)
-db.py         SQLite schema and helpers
+db.py         database schema and helpers (SQLite or Postgres)
+storage.py    receipt files (local folder or Supabase Storage)
 templates/    Jinja pages (mobile-first)
 static/       CSS, JS (photo downscaling, bottom sheet, chart readouts), PWA manifest
 ```

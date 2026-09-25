@@ -2,6 +2,7 @@ flask>=3.0
 anthropic>=1.0      # receipt reading with Claude (optional: needs ANTHROPIC_API_KEY)
 pypdf>=4.0          # text extraction from PDF receipts without an API key
 gunicorn>=22.0
+psycopg[binary]>=3.1  # Postgres (Supabase) when DATABASE_URL is set
 # Optional OCR for photos without an API key (also needs the `tesseract` binary):
 # pytesseract
 # pillow
