@@ -10,6 +10,7 @@ the amount by hand.
 from __future__ import annotations
 
 import base64
+import io
 import json
 import logging
 import os
@@ -47,22 +48,21 @@ _SCHEMA = {
 }
 
 
-def extract(path: str, mime: str, loan_names: list[str] | None = None) -> dict | None:
+def extract(data: bytes, mime: str, loan_names: list[str] | None = None) -> dict | None:
     """Best-effort structured read of a receipt. Returns None if unreadable."""
     if os.environ.get("ANTHROPIC_API_KEY"):
         try:
-            return _extract_claude(path, mime, loan_names or [])
+            return _extract_claude(data, mime, loan_names or [])
         except Exception:  # network/API issues must never block saving
             log.exception("Claude receipt extraction failed; falling back")
-    text = _read_text(path, mime)
+    text = _read_text(data, mime)
     return parse_text(text) if text else None
 
 
-def _extract_claude(path: str, mime: str, loan_names: list[str]) -> dict | None:
+def _extract_claude(raw: bytes, mime: str, loan_names: list[str]) -> dict | None:
     import anthropic
 
-    with open(path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode()
+    data = base64.standard_b64encode(raw).decode()
     if mime == PDF_TYPE:
         block = {"type": "document", "source": {"type": "base64", "media_type": mime, "data": data}}
     elif mime in IMAGE_TYPES:
@@ -97,19 +97,19 @@ def _extract_claude(path: str, mime: str, loan_names: list[str]) -> dict | None:
     return out
 
 
-def _read_text(path: str, mime: str) -> str:
+def _read_text(data: bytes, mime: str) -> str:
     try:
         if mime == PDF_TYPE:
             from pypdf import PdfReader
-            return "\n".join(p.extract_text() or "" for p in PdfReader(path).pages)
+            return "\n".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages)
         if mime in IMAGE_TYPES:
             import pytesseract
             from PIL import Image
-            return pytesseract.image_to_string(Image.open(path))
+            return pytesseract.image_to_string(Image.open(io.BytesIO(data)))
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as exc:  # optional deps missing/broken (pyo3 panics aren't Exceptions)
-        log.info("No local text extraction for %s: %r", path, exc)
+        log.info("No local text extraction for %s receipt: %r", mime, exc)
     return ""
 
 

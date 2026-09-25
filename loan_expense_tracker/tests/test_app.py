@@ -1,4 +1,5 @@
 import io
+import os
 from datetime import date
 
 import pytest
@@ -7,17 +8,27 @@ import app as app_module
 import receipts
 
 
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
+PG_URL = os.environ.get("TEST_DATABASE_URL", "")
+
+
+@pytest.fixture(params=["sqlite", "postgres"])
+def client(request, tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    if request.param == "postgres":
+        if not PG_URL:
+            pytest.skip("set TEST_DATABASE_URL to run against Postgres")
+        import psycopg
+        with psycopg.connect(PG_URL, autocommit=True) as con:
+            con.execute("DROP TABLE IF EXISTS transactions, loans, settings CASCADE")
+        database = PG_URL
+    else:
+        database = str(tmp_path / "t.db")
     a = app_module.create_app({
-        "DATABASE": str(tmp_path / "t.db"),
+        "DATABASE": database,
         "UPLOAD_DIR": str(tmp_path / "up"),
         "TESTING": True,
         "APP_PASSWORD": "",
     })
-    import db
-    db.init_db(str(tmp_path / "t.db"))
     return a.test_client()
 
 
@@ -104,3 +115,29 @@ def test_healthz_is_public(tmp_path):
                                "APP_PASSWORD": "s3cret", "TESTING": True})
     r = a.test_client().get("/healthz")
     assert r.status_code == 200 and r.get_data(as_text=True) == "ok"
+
+
+def test_receipt_is_served_back_and_deleted(client):
+    r = client.post("/scan", data={"receipt": (io.BytesIO(b"%PDF-fake"), "r.pdf", "application/pdf")},
+                    content_type="multipart/form-data")
+    tx_url = r.headers["Location"]
+    html = client.get(tx_url).get_data(as_text=True)
+    name = html.split("/receipts/")[1].split('"')[0]
+    got = client.get("/receipts/" + name)
+    assert got.status_code == 200 and got.data == b"%PDF-fake" and got.mimetype == "application/pdf"
+    client.post(tx_url + "/delete")
+    assert client.get("/receipts/" + name).status_code == 404
+
+
+def test_export_csv(client):
+    client.post("/add", data={"kind": "expense", "amount": "5", "category": "Dining",
+                              "day": "2026-09-01", "merchant": "Cafe"})
+    csv = client.get("/export.csv").get_data(as_text=True)
+    assert csv.splitlines()[1].startswith("2026-09-01,expense,Dining,5.0,Cafe")
+
+
+def test_hosted_config_requires_database_and_storage(tmp_path, monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    with pytest.raises(RuntimeError, match="DATABASE_URL.*SUPABASE_URL"):
+        app_module.create_app({"DATABASE": str(tmp_path / "x.db"), "UPLOAD_DIR": str(tmp_path / "u"),
+                               "APP_PASSWORD": "pw"})

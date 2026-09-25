@@ -16,6 +16,7 @@ from flask import (Flask, Response, abort, flash, redirect, render_template, req
 import db
 import loans as L
 import receipts
+import storage
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ALLOWED_MIME = receipts.IMAGE_TYPES | {receipts.PDF_TYPE}
@@ -27,21 +28,39 @@ def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__)
     data_dir = os.environ.get("DATA_DIR", os.path.join(HERE, "data"))
     app.config.update(
-        DATABASE=os.path.join(data_dir, "tracker.db"),
+        # Postgres (e.g. Supabase) when DATABASE_URL is set, else a local SQLite file.
+        DATABASE=os.environ.get("DATABASE_URL") or os.path.join(data_dir, "tracker.db"),
         UPLOAD_DIR=os.path.join(data_dir, "receipts"),
+        SUPABASE_URL=os.environ.get("SUPABASE_URL", ""),
+        SUPABASE_SERVICE_KEY=os.environ.get("SUPABASE_SERVICE_KEY", ""),
+        SUPABASE_BUCKET=os.environ.get("SUPABASE_BUCKET", "receipts"),
         SECRET_KEY=os.environ.get("SECRET_KEY") or _persistent_secret(data_dir),
         APP_PASSWORD=os.environ.get("APP_PASSWORD", ""),
         MAX_CONTENT_LENGTH=20 * 1024 * 1024,
     )
     if config:
         app.config.update(config)
-    if os.environ.get("RENDER") and not app.config["APP_PASSWORD"] and not app.config.get("TESTING"):
-        raise RuntimeError("Set APP_PASSWORD before deploying: without it anyone with the URL can see your finances.")
-    os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
+    if os.environ.get("RENDER") and not app.config.get("TESTING"):
+        check_hosted_config(app.config)
+    app.extensions["receipts"] = storage.from_config(app.config)
     db.init_db(app.config["DATABASE"])
     app.teardown_appcontext(db.close_db)
     register(app)
     return app
+
+
+def check_hosted_config(cfg):
+    """On a host without a persistent disk, refuse to start in a way that
+    would expose the data or silently lose it on the next restart."""
+    missing = []
+    if not cfg["APP_PASSWORD"]:
+        missing.append("APP_PASSWORD (without it anyone with the URL can see your finances)")
+    if not db.is_pg(cfg["DATABASE"]):
+        missing.append("DATABASE_URL (your Supabase Postgres connection string)")
+    if not (cfg["SUPABASE_URL"] and cfg["SUPABASE_SERVICE_KEY"]):
+        missing.append("SUPABASE_URL and SUPABASE_SERVICE_KEY (for storing receipts)")
+    if missing:
+        raise RuntimeError("Missing settings: " + "; ".join(missing))
 
 
 def _persistent_secret(data_dir: str) -> str:
@@ -96,8 +115,8 @@ def loans_overview():
     return out
 
 
-def save_upload(file) -> tuple[str, str] | None:
-    """Store an uploaded receipt; returns (filename, mime) or None."""
+def save_upload(file) -> tuple[str, str, bytes] | None:
+    """Store an uploaded receipt; returns (filename, mime, bytes) or None."""
     if not file or not file.filename:
         return None
     ext = os.path.splitext(file.filename)[1].lower()
@@ -107,9 +126,14 @@ def save_upload(file) -> tuple[str, str] | None:
         return None
     ext = ext if ext in EXT_MIME else {v: k for k, v in EXT_MIME.items()}[mime]
     name = f"{date.today():%Y%m%d}-{uuid.uuid4().hex[:10]}{ext}"
+    data = file.read()
+    receipt_store().save(name, data, mime)
+    return name, mime, data
+
+
+def receipt_store():
     from flask import current_app
-    file.save(os.path.join(current_app.config["UPLOAD_DIR"], name))
-    return name, mime
+    return current_app.extensions["receipts"]
 
 
 def match_loan(fields: dict, overview: list[dict]):
@@ -133,7 +157,7 @@ def match_loan(fields: dict, overview: list[dict]):
     return None
 
 
-def apply_receipt(tx_id: int, path: str, mime: str) -> dict | None:
+def apply_receipt(tx_id: int, data: bytes, mime: str) -> dict | None:
     """Read a receipt and fill the transaction with what it says.
 
     Only fields the user left blank (amount 0, default category, empty
@@ -142,7 +166,7 @@ def apply_receipt(tx_id: int, path: str, mime: str) -> dict | None:
     """
     conn = db.get_db()
     overview = loans_overview()
-    fields = receipts.extract(path, mime, [o["loan"]["name"] for o in overview])
+    fields = receipts.extract(data, mime, [o["loan"]["name"] for o in overview])
     if not fields:
         return None
     tx = conn.execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone()
@@ -358,13 +382,11 @@ def register(app: Flask):
             if not data["amount"] and not up:
                 flash("Enter an amount or attach a receipt.", "error")
                 return render_template("tx_form.html", tx=data, mode="add")
-            conn = db.get_db()
-            cur = conn.execute(
+            tx_id = db.insert(
                 "INSERT INTO transactions(kind, amount, category, day, merchant, note, receipt) "
                 "VALUES(:kind, :amount, :category, :day, :merchant, :note, :receipt)",
                 dict(data, receipt=up[0] if up else None))
-            conn.commit()
-            tx_id = cur.lastrowid
+            db.get_db().commit()
             if up:
                 return finish_receipt(tx_id, up)
             flash(f"Saved {data['kind']} of {data['amount']:,.2f}.", "ok")
@@ -374,9 +396,8 @@ def register(app: Flask):
             "kind": kind, "day": date.today().isoformat(),
             "category": "Revenue" if kind == "income" else ""})
 
-    def finish_receipt(tx_id: int, up: tuple[str, str]):
-        path = os.path.join(app.config["UPLOAD_DIR"], up[0])
-        fields = apply_receipt(tx_id, path, up[1])
+    def finish_receipt(tx_id: int, up: tuple[str, str, bytes]):
+        fields = apply_receipt(tx_id, up[2], up[1])
         tx = db.get_db().execute("SELECT * FROM transactions WHERE id = ?", (tx_id,)).fetchone()
         if not fields:
             flash("Receipt attached. Couldn't read it automatically — please check the amount.", "warn")
@@ -398,12 +419,11 @@ def register(app: Flask):
             if not request.files.get("receipt") or not request.files["receipt"].filename:
                 flash("No receipt selected.", "error")
             return redirect(request.referrer or url_for("dashboard"))
-        conn = db.get_db()
-        cur = conn.execute(
+        tx_id = db.insert(
             "INSERT INTO transactions(kind, amount, category, day, receipt) VALUES('expense', 0, 'Other', ?, ?)",
             (date.today().isoformat(), up[0]))
-        conn.commit()
-        return finish_receipt(cur.lastrowid, up)
+        db.get_db().commit()
+        return finish_receipt(tx_id, up)
 
     @app.route("/tx/<int:tx_id>", methods=["GET", "POST"])
     @login_required
@@ -422,6 +442,8 @@ def register(app: Flask):
                 conn.execute("UPDATE transactions SET receipt = ? WHERE id = ?", (up[0], tx_id))
             conn.commit()
             if up:
+                if tx["receipt"]:
+                    receipt_store().delete(tx["receipt"])
                 return finish_receipt(tx_id, up)
             flash("Updated.", "ok")
             return redirect(url_for("transactions", month=data["day"][:7]))
@@ -435,17 +457,19 @@ def register(app: Flask):
         conn.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
         conn.commit()
         if tx and tx["receipt"]:
-            try:
-                os.remove(os.path.join(app.config["UPLOAD_DIR"], tx["receipt"]))
-            except OSError:
-                pass
+            receipt_store().delete(tx["receipt"])
         flash("Deleted.", "ok")
         return redirect(request.form.get("next") or url_for("transactions"))
 
     @app.route("/receipts/<path:name>")
     @login_required
     def receipt_file(name):
-        return send_from_directory(app.config["UPLOAD_DIR"], name)
+        try:
+            data = receipt_store().load(name)
+        except FileNotFoundError:
+            abort(404)
+        mime = EXT_MIME.get(os.path.splitext(name)[1].lower(), "application/octet-stream")
+        return Response(data, mimetype=mime, headers={"Cache-Control": "private, max-age=86400"})
 
     # ---- loans
     @app.route("/loans")
@@ -478,17 +502,17 @@ def register(app: Flask):
                 flash("Amount, rate and term are required.", "error")
                 return render_template("loan_form.html", loan=request.form, mode="add")
             conn = db.get_db()
-            cur = conn.execute(
+            loan_id = db.insert(
                 "INSERT INTO loans(name, lender, principal, rate, term_months, first_due, payment, extra) "
                 "VALUES(:name, :lender, :principal, :rate, :term_months, :first_due, :payment, :extra)", data)
-            conn.commit()
             if request.form.get("mark_past"):
-                loan = conn.execute("SELECT * FROM loans WHERE id = ?", (cur.lastrowid,)).fetchone()
+                loan = conn.execute("SELECT * FROM loans WHERE id = ?", (loan_id,)).fetchone()
                 for r in loan_schedule(loan):
                     if r.due < date.today():
-                        record_payment(loan, r, create_tx=False)
+                        record_payment(loan, r, create_tx=False, commit=False)
+            conn.commit()
             flash(f"Loan “{data['name']}” added.", "ok")
-            return redirect(url_for("loan_detail", loan_id=cur.lastrowid))
+            return redirect(url_for("loan_detail", loan_id=loan_id))
         return render_template("loan_form.html", loan={"first_due": L.add_months(date.today(), 1).isoformat()},
                                mode="add")
 
@@ -531,17 +555,18 @@ def register(app: Flask):
         return render_template("loan_detail.html", loan=loan, rows=rows, paid=paid,
                                s=L.summarize(rows, paid))
 
-    def record_payment(loan, inst: L.Installment, create_tx=True, day: date | None = None):
+    def record_payment(loan, inst: L.Installment, create_tx=True, day: date | None = None, commit=True):
         """Mark an installment paid. Pre-app history is stored with source='history'
         and amount 0 so it doesn't distort spending totals."""
         amount = inst.payment + inst.extra if create_tx else 0.0
         db.get_db().execute(
-            "INSERT OR IGNORE INTO transactions(kind, amount, category, day, merchant, note, source, loan_id, loan_period) "
-            "VALUES('expense', ?, 'Loan payment', ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO transactions(kind, amount, category, day, merchant, note, source, loan_id, loan_period) "
+            "VALUES('expense', ?, 'Loan payment', ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
             (round(amount, 2), (day or inst.due).isoformat(), loan["lender"] or loan["name"],
              f"{loan['name']} #{inst.period}", "loan" if create_tx else "history",
              loan["id"], inst.period))
-        db.get_db().commit()
+        if commit:
+            db.get_db().commit()
 
     @app.route("/loans/<int:loan_id>/pay/<int:period>", methods=["POST"])
     @login_required
@@ -580,7 +605,8 @@ def register(app: Flask):
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(["date", "type", "category", "amount", "merchant", "note", "loan", "installment", "receipt"])
-        w.writerows([tuple(r) for r in rows])
+        w.writerows([[r[k] for k in ("day", "kind", "category", "amount", "merchant", "note",
+                                     "loan", "loan_period", "receipt")] for r in rows])
         return Response(buf.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=transactions.csv"})
 

@@ -25,9 +25,7 @@ def test_parse_text_russian_total_with_space_thousands():
 
 def test_extract_without_backends_returns_none(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    f = tmp_path / "r.png"
-    f.write_bytes(b"\x89PNG\r\n\x1a\n")
-    assert receipts.extract(str(f), "image/png") is None
+    assert receipts.extract(b"\x89PNG\r\n\x1a\n", "image/png") is None
 
 
 def test_claude_backend_builds_request_and_parses(tmp_path, monkeypatch):
@@ -52,9 +50,7 @@ def test_claude_backend_builds_request_and_parses(tmp_path, monkeypatch):
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
     monkeypatch.setattr(anthropic, "Anthropic", FakeClient)
-    f = tmp_path / "r.jpg"
-    f.write_bytes(b"\xff\xd8\xff")
-    out = receipts.extract(str(f), "image/jpeg", ["Car loan"])
+    out = receipts.extract(b"\xff\xd8\xff", "image/jpeg", ["Car loan"])
     assert out["loan_name"] == "Car loan" and out["source"] == "claude"
     assert sent["output_config"]["format"]["type"] == "json_schema"
     assert sent["messages"][0]["content"][0]["type"] == "image"
