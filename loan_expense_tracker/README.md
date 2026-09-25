@@ -44,6 +44,22 @@ python app.py                         # http://localhost:8000
 
 Open it on your phone at `http://<your-computer-ip>:8000` (same Wi-Fi), or deploy it.
 
+### Deploy on Render
+
+The repo root has a `render.yaml` Blueprint. It sets up a web service on the Starter
+plan with a 1 GB disk at `/data` for the database and receipts.
+
+1. In the [Render dashboard](https://dashboard.render.com), choose **New → Blueprint**
+   and connect this GitHub repo. Render reads `render.yaml` from the branch you pick
+   (use `main` once this is merged).
+2. When asked, fill in `APP_PASSWORD` (required: anyone with the link could see your
+   data otherwise) and, optionally, `ANTHROPIC_API_KEY`.
+3. Click **Apply**. When the deploy finishes, open the `https://….onrender.com` URL on
+   your phone, sign in, and choose **Add to Home Screen**.
+
+New pushes to the branch redeploy automatically. Your data is kept on the disk
+between deploys.
+
 ### Deploy (Docker)
 
 ```bash

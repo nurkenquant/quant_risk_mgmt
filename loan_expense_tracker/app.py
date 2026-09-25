@@ -35,6 +35,8 @@ def create_app(config: dict | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+    if os.environ.get("RENDER") and not app.config["APP_PASSWORD"] and not app.config.get("TESTING"):
+        raise RuntimeError("Set APP_PASSWORD before deploying: without it anyone with the URL can see your finances.")
     os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
     db.init_db(app.config["DATABASE"])
     app.teardown_appcontext(db.close_db)
@@ -586,6 +588,11 @@ def register(app: Flask):
     def manifest():
         return send_from_directory(os.path.join(HERE, "static"), "manifest.webmanifest",
                                    mimetype="application/manifest+json")
+
+    @app.route("/healthz")
+    def healthz():
+        db.get_db().execute("SELECT 1")
+        return "ok"
 
 
 app = create_app()

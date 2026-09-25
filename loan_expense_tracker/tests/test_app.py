@@ -97,3 +97,10 @@ def test_password_protection(tmp_path):
     assert c.get("/").status_code == 302
     c.post("/login", data={"password": "s3cret"})
     assert c.get("/").status_code == 200
+
+
+def test_healthz_is_public(tmp_path):
+    a = app_module.create_app({"DATABASE": str(tmp_path / "h.db"), "UPLOAD_DIR": str(tmp_path / "u"),
+                               "APP_PASSWORD": "s3cret", "TESTING": True})
+    r = a.test_client().get("/healthz")
+    assert r.status_code == 200 and r.get_data(as_text=True) == "ok"
